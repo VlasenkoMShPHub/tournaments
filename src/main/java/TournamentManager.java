@@ -17,10 +17,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.security.GeneralSecurityException;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Scanner;
+import java.util.*;
 
 public class TournamentManager {
     private static String SHEET_ID = "1aQqQ9ldMDDjqU0rG1en9B5_tnnX_cpJr1ZHmi5k29ac";
@@ -57,6 +54,7 @@ public class TournamentManager {
     }
 
     private static List<List<Object>> read(String range) throws IOException, GeneralSecurityException {
+        range = range.toUpperCase();
         sheetsService = getSheetsService();
         ValueRange response = sheetsService.spreadsheets().values().get(SHEET_ID, range).execute();
         List<List<Object>> values = response.getValues();
@@ -65,16 +63,13 @@ public class TournamentManager {
         } else {
             for (List row : values) {
                 System.out.println(row);
-                for (Object o : row) {
-                    System.out.printf("%s\t", o);
-                }
-                System.out.println();
             }
         }
         return values;
     }
 
     private static void write(String range, List<List<Object>> values) throws IOException, GeneralSecurityException {
+        range = range.toUpperCase();
         sheetsService = getSheetsService();
         ValueRange body = new ValueRange().setValues(values);
         UpdateValuesResponse result = sheetsService.spreadsheets().values().update(SHEET_ID, range, body)
@@ -82,23 +77,54 @@ public class TournamentManager {
         System.err.println(result);
     }
 
+    private static void initLayout() throws IOException, GeneralSecurityException {
+        sheetsService = getSheetsService();
+        write("A1:E1", Arrays.asList(
+                Arrays.asList("input names below, number here", "sport", "input 1 where applies",
+                        "input action", "type \"e\" to execute")));
+        write("B2:B4", Arrays.asList(Arrays.asList("chess"),
+                Arrays.asList("table tennis"), Arrays.asList("football")));
+    }
+
+    private static List<String> getNames() throws IOException, GeneralSecurityException {
+        sheetsService = getSheetsService();
+        List<List<Object>> range = read("a1");
+        int numRange = Integer.parseInt((String) range.get(0).get(0));
+        System.out.println(numRange);
+        List<List<Object>> values = read("a2:a"+Integer.toString(numRange + 1));
+        List<String> names = new ArrayList<> ();
+        for (List row : values){
+            names.add((String)row.get(0));
+        }
+        System.out.println(names);
+        return names;
+    }
+
     // lol there are no parameters with default values
     // have to use overloading instead
     private static List<List<Object>> act(String action, String range, List<List<Object>> values)
             throws IOException, GeneralSecurityException {
-        if (action.equals("read")){
-            values = read(range);
-            System.out.println("values READ");
-        }else if (action.equals("write")){
-            write(range, values);
-            System.out.println("values WRITTEN");
+        switch (action) {
+            case "read":
+                values = read(range);
+                System.out.println("values READ");
+                break;
+            case "write":
+                write(range, values);
+                System.out.println("values WRITTEN");
+                break;
+            case "init":
+                initLayout();
+                System.out.println("LAYOUT LOADED");
+                break;
         }
         return values;
     }
 
     public static void main(String[] args) throws IOException, GeneralSecurityException {
         Scanner scanner = new Scanner(System.in);
-        String action, range, strValues = "";
+        String action, range="", strValues="";
+        List<String> names;
         List<List<Object>> receivedValues;
         while (true) {
             System.out.println("enter your action, range and values if any:");
@@ -106,8 +132,13 @@ public class TournamentManager {
             if (action.equals("exit")){
                 break;
             }
-            range = scanner.nextLine().toUpperCase();
-            range = "Sheet1!" + range;
+            if (action.equals("get names")){
+                names = getNames();
+            }
+            if (action.equals("read") || action.equals("write")) {
+                range = scanner.nextLine().toUpperCase();
+                range = "Sheet1!" + range;
+            }
             if (action.equals("write")) {
                 strValues = scanner.nextLine();
             }
