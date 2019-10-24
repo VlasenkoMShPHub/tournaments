@@ -9,8 +9,7 @@ import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.client.util.store.FileDataStoreFactory;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
-import com.google.api.services.sheets.v4.model.UpdateValuesResponse;
-import com.google.api.services.sheets.v4.model.ValueRange;
+import com.google.api.services.sheets.v4.model.*;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -100,6 +99,27 @@ public class TournamentManager {
         return names;
     }
 
+    private static void addTab(String title) throws IOException, GeneralSecurityException {
+        sheetsService = getSheetsService();
+        List<Request> requests = new ArrayList<>();
+        AddSheetRequest request = new AddSheetRequest().setProperties(new SheetProperties()
+                .setTitle(title));
+        Request req = new Request().setAddSheet(request);
+        requests.add(req);
+        BatchUpdateSpreadsheetRequest requestBody = new BatchUpdateSpreadsheetRequest();
+        requestBody.setRequests(requests);
+
+        sheetsService.spreadsheets().batchUpdate(SHEET_ID,requestBody).execute();
+
+
+        /*
+        Spreadsheet spreadSheet = new Spreadsheet().setProperties(
+                new SpreadsheetProperties().setTitle("My Spreadsheet"));
+        Spreadsheet result = sheetsService
+                .spreadsheets()
+                .create(spreadSheet).execute();*/
+    }
+
     // lol there are no parameters with default values
     // have to use overloading instead
     private static List<List<Object>> act(String action, String range, List<List<Object>> values)
@@ -116,6 +136,14 @@ public class TournamentManager {
             case "init":
                 initLayout();
                 System.out.println("LAYOUT LOADED");
+                break;
+            case "make str":
+                addTab("Tournament structure");
+                System.out.println("STR MADE");
+                break;
+            case "make stats":
+                addTab("Stats");
+                System.out.println("STATS MADE");
                 break;
         }
         return values;
