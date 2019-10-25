@@ -10,6 +10,7 @@ import com.google.api.client.util.store.FileDataStoreFactory;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.*;
+import javafx.util.Pair;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -53,77 +54,114 @@ public class TournamentManager {
     }
 
     private static List<List<Object>> read(String range) throws IOException, GeneralSecurityException {
+        if (!range.contains("!")){
+            System.out.println(range);
+            throw new IllegalArgumentException("sheet not specified");
+        }
         range = range.toUpperCase();
         sheetsService = getSheetsService();
         ValueRange response = sheetsService.spreadsheets().values().get(SHEET_ID, range).execute();
         List<List<Object>> values = response.getValues();
         if (values == null || values.isEmpty()){
             System.out.println("No data found");
-        } else {
-            for (List row : values) {
-                System.out.println(row);
-            }
         }
         return values;
     }
 
     private static void write(String range, List<List<Object>> values) throws IOException, GeneralSecurityException {
+        if (!range.contains("!")){
+            System.out.println(range);
+            throw new IllegalArgumentException("sheet not specified");
+        }
         range = range.toUpperCase();
         sheetsService = getSheetsService();
         ValueRange body = new ValueRange().setValues(values);
-        UpdateValuesResponse result = sheetsService.spreadsheets().values().update(SHEET_ID, range, body)
-                .setValueInputOption("RAW").execute();
-        System.err.println(result);
+        sheetsService.spreadsheets().values().update(SHEET_ID, range, body).setValueInputOption("RAW").execute();
+    }
+
+    private static Pair<String, String> waitExecute(String sheet) throws InterruptedException, IOException, GeneralSecurityException {
+        if (!sheet.contains("!")){
+            sheet = sheet + "!";
+        }
+        sheetsService = getSheetsService();
+        List<List<Object>> values = read(sheet+"e1");
+        while (values.get(0).get(0).equals("type action to execute")) {
+            Thread.sleep(1000);
+            sheetsService = getSheetsService();
+            try {
+                values = read(sheet + "e1:f1");
+            }catch (java.net.SocketTimeoutException e){
+                System.err.println("Caught TimeoutException");
+            }
+        }
+        write(sheet+"e1:f1", Arrays.asList(Arrays.asList("type action to execute", "execution parameter")));
+        return new Pair<String, String>((String) values.get(0).get(0), (String) values.get(0).get(1));
     }
 
     private static void initLayout() throws IOException, GeneralSecurityException {
         sheetsService = getSheetsService();
-        write("A1:E1", Arrays.asList(
+        write("Sheet1!A1:F1", Arrays.asList(
                 Arrays.asList("input names below, number here", "sport", "input 1 where applies",
-                        "input action", "type \"e\" to execute")));
-        write("B2:B4", Arrays.asList(Arrays.asList("chess"),
+                        "", "type action to execute", "execution parameter")));
+        write("Sheet1!B2:B4", Arrays.asList(Arrays.asList("chess"),
                 Arrays.asList("table tennis"), Arrays.asList("football")));
     }
 
-    private static List<String> getNames() throws IOException, GeneralSecurityException {
+    private static List<Object> getNames() throws IOException, GeneralSecurityException {
         sheetsService = getSheetsService();
-        List<List<Object>> range = read("a1");
+        List<List<Object>> range = read("Sheet1!a1");
         int numRange = Integer.parseInt((String) range.get(0).get(0));
-        System.out.println(numRange);
-        List<List<Object>> values = read("a2:a"+Integer.toString(numRange + 1));
-        List<String> names = new ArrayList<> ();
+        List<List<Object>> values = read("Sheet1!a2:a"+Integer.toString(numRange + 1));
+        List<Object> names = new ArrayList<> ();
         for (List row : values){
-            names.add((String)row.get(0));
+            names.add(row.get(0));
         }
-        System.out.println(names);
         return names;
     }
 
     private static void addTab(String title) throws IOException, GeneralSecurityException {
+        boolean flag = false;
         sheetsService = getSheetsService();
-        List<Request> requests = new ArrayList<>();
-        AddSheetRequest request = new AddSheetRequest().setProperties(new SheetProperties()
-                .setTitle(title));
-        Request req = new Request().setAddSheet(request);
-        requests.add(req);
-        BatchUpdateSpreadsheetRequest requestBody = new BatchUpdateSpreadsheetRequest();
-        requestBody.setRequests(requests);
+        Spreadsheet ssheet = sheetsService.spreadsheets().get(SHEET_ID).execute();
+        for (Sheet sheet : ssheet.getSheets()) {
+            if (sheet.getProperties().getTitle().equals(title)){
+                System.out.printf("sheet %s already exists\n", title);
+                flag = true;
+            }
+        }
+        if (!flag) {
+            List<Request> requests = new ArrayList<>();
+            AddSheetRequest addSheet = new AddSheetRequest().setProperties(new SheetProperties().setTitle(title));
+            Request request = new Request().setAddSheet(addSheet);
+            requests.add(request);
+            BatchUpdateSpreadsheetRequest requestBody = new BatchUpdateSpreadsheetRequest();
+            requestBody.setRequests(requests);
+            sheetsService.spreadsheets().batchUpdate(SHEET_ID, requestBody).execute();
+        }
+    }
 
-        sheetsService.spreadsheets().batchUpdate(SHEET_ID,requestBody).execute();
-
-
-        /*
-        Spreadsheet spreadSheet = new Spreadsheet().setProperties(
-                new SpreadsheetProperties().setTitle("My Spreadsheet"));
-        Spreadsheet result = sheetsService
-                .spreadsheets()
-                .create(spreadSheet).execute();*/
+    private static void initStructure(List<Object> names) throws IOException, GeneralSecurityException {
+        String range;
+        sheetsService = getSheetsService();
+        //System.out.println(Math.log(names.size()) / Math.log(2));
+        List<List<Object>> values = new ArrayList<> ();
+        for (int i = 0; i < names.size() * 2; i++) {
+            if (i % 2 == 0) {
+                values.add(Arrays.asList(names.get(i / 2)));
+            }
+            else{
+                values.add(Arrays.asList(""));
+            }
+        }
+        range = "Tournament structure!a1:a";
+        write(range + (2 * names.size()), values);
+        write("Tournament structure!E1:F1", Arrays.asList(Arrays.asList("type action to execute", "execution parameter")));
     }
 
     // lol there are no parameters with default values
     // have to use overloading instead
     private static List<List<Object>> act(String action, String range, List<List<Object>> values)
-            throws IOException, GeneralSecurityException {
+            throws IOException, GeneralSecurityException, InterruptedException {
         switch (action) {
             case "read":
                 values = read(range);
@@ -139,21 +177,26 @@ public class TournamentManager {
                 break;
             case "make str":
                 addTab("Tournament structure");
-                System.out.println("STR MADE");
+                initStructure(getNames());
+                System.out.println("STRUCTURE MADE");
                 break;
             case "make stats":
                 addTab("Stats");
                 System.out.println("STATS MADE");
                 break;
+            default:
+                System.out.println("incorrect input");
+                System.err.println("incorrect input");
         }
         return values;
     }
 
-    public static void main(String[] args) throws IOException, GeneralSecurityException {
+    public static void main(String[] args) throws IOException, GeneralSecurityException, InterruptedException {
         Scanner scanner = new Scanner(System.in);
         String action, range="", strValues="";
-        List<String> names;
+        List<Object> names;
         List<List<Object>> receivedValues;
+        Pair<String, String> exeParams;
         while (true) {
             System.out.println("enter your action, range and values if any:");
             action = scanner.nextLine();
@@ -170,8 +213,14 @@ public class TournamentManager {
             if (action.equals("write")) {
                 strValues = scanner.nextLine();
             }
+
             System.out.println("processing");
             List<List<Object>> values = Arrays.asList(Arrays.asList(strValues));
+            if (action.equals("wait")){
+                exeParams = waitExecute("Tournament structure!");
+                action = exeParams.getKey();
+                range = "Tournament structure!" + exeParams.getValue();
+            }
             receivedValues = act(action, range, values);
             System.out.println(receivedValues);
         }
