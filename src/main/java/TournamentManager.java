@@ -80,24 +80,35 @@ public class TournamentManager {
         sheetsService.spreadsheets().values().update(SHEET_ID, range, body).setValueInputOption("RAW").execute();
     }
 
-    private static Pair<String, String> waitExecute(String sheet)
+    private static Pair<String, String> waitExecute()
             throws InterruptedException, IOException, GeneralSecurityException {
-        if (!sheet.contains("!")){
-            sheet = sheet + "!";
-        }
         sheetsService = getSheetsService();
-        List<List<Object>> values = read(sheet+"e1");
-        while (values.get(0).get(0).equals("type action to execute")) {
+        String main_sheet = "Sheet1!", str_sheet = "Tournament Structure!";
+        List<List<Object>> values_main = read(main_sheet + "e1");
+        List<List<Object>> values_str = read(str_sheet + "e1");
+        String action, param;
+        while (values_main.get(0).get(0).equals("type action to execute") &&
+                values_str.get(0).get(0).equals("type action to execute")) {
             Thread.sleep(1000);
             sheetsService = getSheetsService();
             try {
-                values = read(sheet + "e1:f1");
+                values_main = read(main_sheet + "e1:f1");
+                values_str = read(str_sheet + "e1:f1");
             }catch (java.net.SocketTimeoutException e){
                 System.err.println("Caught TimeoutException");
             }
         }
-        write(sheet+"e1:f1", Arrays.asList(Arrays.asList("type action to execute", "execution parameter")));
-        return new Pair<String, String>((String) values.get(0).get(0), (String) values.get(0).get(1));
+        if (!values_main.get(0).get(0).equals("type action to execute")) {
+            write(main_sheet + "e1:f1", Arrays.asList(Arrays.asList("type action to execute", "execution parameter")));
+            action = (String) values_main.get(0).get(0);
+            param = main_sheet + values_main.get(0).get(1);
+        }
+        else{
+            write(str_sheet + "e1:f1", Arrays.asList(Arrays.asList("type action to execute", "execution parameter")));
+            action = (String) values_str.get(0).get(0);
+            param = str_sheet + values_str.get(0).get(1);
+        }
+        return new Pair<>(action, param);
     }
 
     private static void initLayout() throws IOException, GeneralSecurityException {
@@ -113,7 +124,7 @@ public class TournamentManager {
         sheetsService = getSheetsService();
         List<List<Object>> range = read("Sheet1!a1");
         int numRange = Integer.parseInt((String) range.get(0).get(0));
-        List<List<Object>> values = read("Sheet1!a2:a"+Integer.toString(numRange + 1));
+        List<List<Object>> values = read("Sheet1!a2:a" + (numRange + 1));
         List<Object> names = new ArrayList<> ();
         for (List row : values){
             names.add(row.get(0));
@@ -190,13 +201,13 @@ public class TournamentManager {
                 have_pair = false;
                 winner_pos = new Pair<>(pos - ((int) Math.pow(2, step) / 2), step);
                 String range = "Tournament structure!";
-                range += Character.toString((char)((int)(winner_pos.getValue() + 65)));
-                range += Integer.toString((int)(winner_pos.getKey()) + 1);
+                range += Character.toString((char)(winner_pos.getValue() + 65));
+                range += Integer.toString(winner_pos.getKey() + 1);
                 System.out.println(range);
                 if (last.scoreNow > Integer.parseInt((String) struct.get(pos).get(step))){
                     write(range, Arrays.asList(Arrays.asList(last.name)));
                 }else{
-                    write(range, Arrays.asList(Arrays.asList((String) struct.get(pos).get(step - 1))));
+                    write(range, Arrays.asList(Arrays.asList(struct.get(pos).get(step - 1))));
                 }
                 System.out.println("pair made");
             }else{
@@ -212,7 +223,7 @@ public class TournamentManager {
     // lol there are no parameters with default values
     // have to use overloading instead
     private static List<List<Object>> act(String action, String range, List<List<Object>> values)
-            throws IOException, GeneralSecurityException, InterruptedException {
+            throws IOException, GeneralSecurityException {
         switch (action) {
             case "read":
                 values = read(range);
@@ -254,7 +265,6 @@ public class TournamentManager {
     public static void main(String[] args) throws IOException, GeneralSecurityException, InterruptedException {
         Scanner scanner = new Scanner(System.in);
         String action, range="", strValues="";
-        List<Object> names;
         List<List<Object>> receivedValues;
         Pair<String, String> exeParams;
         while (true) {
@@ -274,9 +284,9 @@ public class TournamentManager {
             System.out.println("processing");
             List<List<Object>> values = Arrays.asList(Arrays.asList(strValues));
             if (action.equals("wait")){
-                exeParams = waitExecute("Tournament structure!");
+                exeParams = waitExecute();
                 action = exeParams.getKey();
-                range = "Tournament structure!" + exeParams.getValue();
+                range = exeParams.getValue();
             }
             receivedValues = act(action, range, values);
             System.out.println(receivedValues);
