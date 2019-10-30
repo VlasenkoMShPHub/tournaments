@@ -27,6 +27,7 @@ public class TournamentManager {
     private static final String TOKENS_DIRECTORY_PATH = "tokens";
     private static final List<String> SCOPES = Collections.singletonList(SheetsScopes.SPREADSHEETS);
     private static final String CREDENTIALS_FILE_PATH = "/client_id.json";
+    private static Map<String, Contestant> contestants = new HashMap<>();
 
     private static Credential authorize() throws IOException, GeneralSecurityException {
         // Load client secrets.
@@ -79,7 +80,8 @@ public class TournamentManager {
         sheetsService.spreadsheets().values().update(SHEET_ID, range, body).setValueInputOption("RAW").execute();
     }
 
-    private static Pair<String, String> waitExecute(String sheet) throws InterruptedException, IOException, GeneralSecurityException {
+    private static Pair<String, String> waitExecute(String sheet)
+            throws InterruptedException, IOException, GeneralSecurityException {
         if (!sheet.contains("!")){
             sheet = sheet + "!";
         }
@@ -115,6 +117,8 @@ public class TournamentManager {
         List<Object> names = new ArrayList<> ();
         for (List row : values){
             names.add(row.get(0));
+            contestants.put((String) row.get(0),
+                    new Contestant((String) row.get(0)));
         }
         return names;
     }
@@ -158,6 +162,53 @@ public class TournamentManager {
         write("Tournament structure!E1:F1", Arrays.asList(Arrays.asList("type action to execute", "execution parameter")));
     }
 
+    private static void updateStructure() throws IOException, GeneralSecurityException {
+        sheetsService = getSheetsService();
+        List<List<Object>> struct = read("tournament structure!A1:E15");
+        int step = 0;
+        System.out.println(struct);
+        for (int i = 0; i < 4; i++){
+            if(i == 0){
+                if (!struct.get(0).get(0).equals("")) {
+                    step++;
+                }
+            }
+            else if (!struct.get((int) Math.pow(2, i) - 1).get(i).equals("")){
+                step++;
+            }
+        }
+        System.out.println(step);
+
+        // name_positions = pow(2, step - 1) - 1 + pow(2, step) * n
+        int pos = (int) Math.pow(2, step - 1) - 1;
+        boolean have_pair = false;
+        Contestant last = new Contestant("");
+        Pair<Integer, Integer> winner_pos;
+        while (!struct.get(pos).get(step).equals("") || pos > 14){
+            System.out.println(pos);
+            if (have_pair){
+                have_pair = false;
+                winner_pos = new Pair<>(pos - ((int) Math.pow(2, step) / 2), step);
+                String range = "Tournament structure!";
+                range += Character.toString((char)((int)(winner_pos.getValue() + 65)));
+                range += Integer.toString((int)(winner_pos.getKey()) + 1);
+                System.out.println(range);
+                if (last.scoreNow > Integer.parseInt((String) struct.get(pos).get(step))){
+                    write(range, Arrays.asList(Arrays.asList(last.name)));
+                }else{
+                    write(range, Arrays.asList(Arrays.asList((String) struct.get(pos).get(step - 1))));
+                }
+                System.out.println("pair made");
+            }else{
+                have_pair = true;
+                last = contestants.get((String) struct.get(pos).get(step - 1));
+                last.scoreNow = Integer.parseInt((String) struct.get(pos).get(step));
+            }
+            pos += Math.pow(2, step);
+        }
+
+    }
+
     // lol there are no parameters with default values
     // have to use overloading instead
     private static List<List<Object>> act(String action, String range, List<List<Object>> values)
@@ -179,6 +230,15 @@ public class TournamentManager {
                 addTab("Tournament structure");
                 initStructure(getNames());
                 System.out.println("STRUCTURE MADE");
+                break;
+            case "update str":
+                List<List<Object>> spaces = new ArrayList<>();
+                for (int i = 0; i < 14; i++){
+                    spaces.add(Arrays.asList(" "));
+                }
+                write("Tournament structure!e2:e15", spaces);
+                updateStructure();
+                System.out.println("STR UPDATED");
                 break;
             case "make stats":
                 addTab("Stats");
@@ -202,9 +262,6 @@ public class TournamentManager {
             action = scanner.nextLine();
             if (action.equals("exit")){
                 break;
-            }
-            if (action.equals("get names")){
-                names = getNames();
             }
             if (action.equals("read") || action.equals("write")) {
                 range = scanner.nextLine().toUpperCase();
