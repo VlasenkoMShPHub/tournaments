@@ -10,8 +10,8 @@ import com.google.api.client.util.store.FileDataStoreFactory;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.*;
-import javafx.util.Pair;
 
+import javafx.util.Pair;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,6 +27,7 @@ public class TournamentManager {
     private static final String TOKENS_DIRECTORY_PATH = "tokens";
     private static final List<String> SCOPES = Collections.singletonList(SheetsScopes.SPREADSHEETS);
     private static final String CREDENTIALS_FILE_PATH = "/client_id.json";
+    private static final int MAX_CONTESTANTS = 16;
     private static Map<String, Contestant> contestants = new HashMap<>();
 
     private static Credential authorize() throws IOException, GeneralSecurityException {
@@ -132,8 +133,7 @@ public class TournamentManager {
         }
         List<List<Object>> values = read("Main!a2:a" + (numRange + 1));
         for (List row : values){
-            contestants.put((String) row.get(0),
-                    new Contestant((String) row.get(0)));
+            contestants.put((String) row.get(0), new Contestant((String) row.get(0)));
         }
     }
 
@@ -188,11 +188,56 @@ public class TournamentManager {
         return names;
     }
 
-    private static void initStats() throws IOException, GeneralSecurityException {
-        sheetsService = getSheetsService();
-        List<List<Object>> names = checkNames();
-        write("Stats!A2:A" + (names.size() + 1), names);
+    private static List<List<Object>> contestantsToList(Map<String, Contestant> conts){
+        List<List<Object>> values = new ArrayList<>();
+        for (Contestant c : conts.values()){
+            values.add(Arrays.asList(c.name, String.valueOf(c.wins), String.valueOf(c.score)));
+        }
+        return values;
+    }
 
+    private static void currentStats() throws IOException, GeneralSecurityException {
+        sheetsService = getSheetsService();
+        List<List<Object>> values = new ArrayList<>();
+        values.add(Arrays.asList("Name", "Wins", "Score"));
+        values.addAll(contestantsToList(contestants));
+        write("Stats!A1:C" + (contestants.size() + 1), values);
+    }
+
+    private static void totalStats() throws IOException, GeneralSecurityException {
+        sheetsService = getSheetsService();
+        Map<String, Contestant> allContestants = new HashMap<>();
+        List<List<Object>> values, total, result = new ArrayList<>();
+        values = read("Stats!A1:C" + MAX_CONTESTANTS);
+        total = read("Total stats!A1:C" + MAX_CONTESTANTS);
+        if (total == null || total.size() < 2){
+            write("Total stats!A1:C" + (values.size() + 1), values);
+            return;
+        }
+        for (List row : total) {
+            if (!row.get(0).equals("Name")) {
+                allContestants.put((String) row.get(0), new Contestant((String) row.get(0),
+                        Integer.parseInt((String) row.get(2)),0,
+                        Integer.parseInt((String) row.get(1)), new Pair<>(0, 0)));
+            }
+        }
+        for (int i = 1; i < values.size(); i++){
+            allContestants.get((String) values.get(i).get(0)).wins += Integer.parseInt((String) values.get(i).get(1));
+            allContestants.get((String) values.get(i).get(0)).score += Integer.parseInt((String) values.get(i).get(2));
+        }
+
+        result.add(Arrays.asList("Name", "Wins", "Score"));
+        result.addAll(contestantsToList(allContestants));
+        write("Total stats!A1:C" + (allContestants.size() + 1), result);
+    }
+
+    private static void resetTotalStats() throws IOException, GeneralSecurityException {
+        sheetsService = getSheetsService();
+        List<List<Object>> empty = new ArrayList<>();
+        for (int i = 0; i < MAX_CONTESTANTS - 1; i++){
+            empty.add(Arrays.asList("", "", ""));
+        }
+        write("Total stats!A2:C" + MAX_CONTESTANTS, empty);
     }
 
     private static void initStructure() throws IOException, GeneralSecurityException {
@@ -206,7 +251,7 @@ public class TournamentManager {
         List<List<Object>> values = new ArrayList<> ();
         for (int i = 0; i < names.size() * 2; i++) {
             if (i % 2 == 0) {
-                values.add(Arrays.asList(names.get(i / 2)));
+                values.add(Arrays.asList(names.get(i / 2).get(0)));
             }
             else{
                 values.add(Arrays.asList(""));
@@ -238,6 +283,7 @@ public class TournamentManager {
         int pos = (int) Math.pow(2, step - 1) - 1;
         boolean have_pair = false;
         Contestant last = new Contestant("");
+        Contestant current = new Contestant("");
         Pair<Integer, Integer> winner_pos;
         while (!struct.get(pos).get(step).equals("") || pos > 14){
             System.out.println(pos);
@@ -248,16 +294,22 @@ public class TournamentManager {
                 range += Character.toString((char)(winner_pos.getValue() + 65));
                 range += Integer.toString(winner_pos.getKey() + 1);
                 System.out.println(range);
-                if (last.scoreNow > Integer.parseInt((String) struct.get(pos).get(step))){
+                current = contestants.get((String) struct.get(pos).get(step - 1));
+                current.scoreNow = Integer.parseInt((String) struct.get(pos).get(step));
+                current.score += current.scoreNow;
+                if (last.scoreNow > current.scoreNow){
                     write(range, Arrays.asList(Arrays.asList(last.name)));
+                    last.wins++;
                 }else{
-                    write(range, Arrays.asList(Arrays.asList(struct.get(pos).get(step - 1))));
+                    write(range, Arrays.asList(Arrays.asList(current.name)));
+                    current.wins++;
                 }
                 System.out.println("pair made");
             }else{
                 have_pair = true;
                 last = contestants.get((String) struct.get(pos).get(step - 1));
                 last.scoreNow = Integer.parseInt((String) struct.get(pos).get(step));
+                last.score += last.scoreNow;
             }
             pos += Math.pow(2, step);
         }
@@ -295,10 +347,19 @@ public class TournamentManager {
                 updateStructure();
                 System.out.println("STR UPDATED");
                 break;
-            case "init stats":
+            case "stats":
                 addTab("Stats");
-                initStats();
+                currentStats();
                 System.out.println("STATS MADE");
+                break;
+            case "total stats":
+                addTab("Total stats");
+                totalStats();
+                System.out.println("TOTAL STATS MADE");
+                break;
+            case "reset stats":
+                resetTotalStats();
+                System.out.println("TOTAL STATS RESET");
                 break;
             default:
                 System.out.println("incorrect input");
