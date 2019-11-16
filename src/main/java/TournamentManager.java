@@ -315,6 +315,27 @@ public class TournamentManager {
         }
     }
 
+    private static void initRobin() throws IOException, GeneralSecurityException {
+        sheetsService = getSheetsService();
+        List<List<Object>> names = checkNames();
+        if (names.size() == 0){
+            return;
+        }
+        List<List<Object>> values = new ArrayList<> ();
+        for (List<Object> objects : names) {
+            values.add(Arrays.asList(objects.get(0)));
+        }
+        write("Robin structure!a2:a" + (names.size() + 1), values);
+        List<Object> horValuesTmp = new ArrayList<> ();
+        for (List<Object> name : names) {
+            horValuesTmp.add(name.get(0));
+        }
+        List<List<Object>> horValues;
+        horValues = Arrays.asList(horValuesTmp);
+        write("Robin structure!b1:" + (char)(names.size() + 65) + "1", horValues);
+        // write("Robin structure!E1:F1", Arrays.asList(Arrays.asList("type action to execute", "execution parameter")));
+    }
+
     // lol there are no parameters with default values
     // have to use overloading instead
     private static List<List<Object>> act(String action, String range, List<List<Object>> values)
@@ -346,6 +367,11 @@ public class TournamentManager {
                 write("Tournament structure!e2:e15", spaces);
                 updateStructure();
                 System.out.println("STR UPDATED");
+                break;
+            case "make robin":
+                addTab("Robin structure");
+                initRobin();
+                System.out.println("ROBIN MADE");
                 break;
             case "stats":
                 addTab("Stats");
