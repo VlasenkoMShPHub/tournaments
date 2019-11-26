@@ -11,12 +11,15 @@ import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.*;
 
+import com.google.common.collect.Lists;
 import javafx.util.Pair;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.security.GeneralSecurityException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.*;
 
 public class TournamentManager {
@@ -79,6 +82,15 @@ public class TournamentManager {
         sheetsService = getSheetsService();
         ValueRange body = new ValueRange().setValues(values);
         sheetsService.spreadsheets().values().update(SHEET_ID, range, body).setValueInputOption("RAW").execute();
+    }
+
+    public static List<Integer> argsort(List<Integer> a) {
+        Integer[] indexes = new Integer[a.size()];
+        for (int i = 0; i < indexes.length; i++) {
+            indexes[i] = i;
+        }
+        Arrays.sort(indexes, (i1, i2) -> Float.compare(a.get(i1), a.get(i2))); // lambda
+        return Arrays.asList(indexes);
     }
 
     private static Pair<String, String> waitExecute()
@@ -330,10 +342,58 @@ public class TournamentManager {
         for (List<Object> name : names) {
             horValuesTmp.add(name.get(0));
         }
+        horValuesTmp.add("score");
+        horValuesTmp.add("rank");
         List<List<Object>> horValues;
         horValues = Arrays.asList(horValuesTmp);
-        write("Robin structure!b1:" + (char)(names.size() + 65) + "1", horValues);
+        write("Robin structure!b1:" + (char)(names.size() + 65 + 2) + "1", horValues);
         // write("Robin structure!E1:F1", Arrays.asList(Arrays.asList("type action to execute", "execution parameter")));
+    }
+
+    private static void updateRobin() throws IOException, GeneralSecurityException {
+        sheetsService = getSheetsService();
+        List<List<Object>> names = checkNames();
+        if (names.size() == 0){
+            return;
+        }
+
+        List<List<Object>> struct = read("Robin structure!A1:K11");
+        Pattern fPattern = Pattern.compile(".*,");
+        Pattern sPattern = Pattern.compile(",.*");
+        List<Integer> scores = new ArrayList<>();
+        for (int i = 1; i < struct.size(); i++){
+            List <Object> row = struct.get(i);
+            Contestant con = contestants.get((String) row.get(0));
+            con.scoreNow = 0;
+            for (int j = 1; j < row.size(); j++){
+                Matcher fMatcher = fPattern.matcher((String) row.get(j));
+                if(fMatcher.find()) {
+                    String fScore = ((String) row.get(j)).substring(fMatcher.start(), fMatcher.end());
+                    con.scoreNow += Integer.parseInt(fScore.substring(0, fScore.length() - 1));
+                }
+            }
+            for (int j = 1; j < i; j++){
+                Matcher sMatcher = sPattern.matcher((String) struct.get(j).get(i));
+                if(sMatcher.find()) {
+                    String sScore = ((String) struct.get(j).get(i)).substring(sMatcher.start(), sMatcher.end());
+                    con.scoreNow += Integer.parseInt(sScore.substring(1));
+                }
+            }
+            scores.add(con.scoreNow);
+            con.score = con.scoreNow;
+            write("Robin structure!" + (char)(names.size() + 65 + 1) + (i + 1),
+                    Arrays.asList(Arrays.asList(con.score)));
+        }
+        List<Integer> ranks = Lists.reverse(argsort(scores));
+        List<List<Object>> ranksStruct = new ArrayList<>();
+        for (int i = 0; i < ranks.size(); i++){
+            ranksStruct.add(Arrays.asList());
+        }
+        for (int i = 0; i < ranks.size(); i++){
+            ranksStruct.set(ranks.get(i), Arrays.asList(i + 1));
+        }
+        write("Robin structure!" + (char)(names.size() + 65 + 2) + "2" + ":"
+                + (char)(names.size() + 65 + 2) + (names.size() + 1), ranksStruct);
     }
 
     // lol there are no parameters with default values
@@ -372,6 +432,10 @@ public class TournamentManager {
                 addTab("Robin structure");
                 initRobin();
                 System.out.println("ROBIN MADE");
+                break;
+            case "update robin":
+                updateRobin();
+                System.out.println("ROBIN UPDATED");
                 break;
             case "stats":
                 addTab("Stats");
