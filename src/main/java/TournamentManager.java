@@ -84,7 +84,7 @@ public class TournamentManager {
         sheetsService.spreadsheets().values().update(SHEET_ID, range, body).setValueInputOption("RAW").execute();
     }
 
-    public static List<Integer> argsort(List<Integer> a) {
+    private static List<Integer> argsort(List<Integer> a) {
         Integer[] indexes = new Integer[a.size()];
         for (int i = 0; i < indexes.length; i++) {
             indexes[i] = i;
@@ -149,7 +149,7 @@ public class TournamentManager {
         }
     }
 
-    private static void addTab(String title) throws IOException, GeneralSecurityException {
+    private static void addTab(String title, int id) throws IOException, GeneralSecurityException {
         boolean flag = false;
         sheetsService = getSheetsService();
         Spreadsheet ssheet = sheetsService.spreadsheets().get(SHEET_ID).execute();
@@ -161,7 +161,8 @@ public class TournamentManager {
         }
         if (!flag) {
             List<Request> requests = new ArrayList<>();
-            AddSheetRequest addSheet = new AddSheetRequest().setProperties(new SheetProperties().setTitle(title));
+            AddSheetRequest addSheet = new AddSheetRequest().setProperties(
+                    new SheetProperties().setTitle(title).setSheetId(id));
             Request request = new Request().setAddSheet(addSheet);
             requests.add(request);
             BatchUpdateSpreadsheetRequest requestBody = new BatchUpdateSpreadsheetRequest();
@@ -253,8 +254,8 @@ public class TournamentManager {
     }
 
     private static void initStructure() throws IOException, GeneralSecurityException {
-        String range;
         sheetsService = getSheetsService();
+        String range;
         List<List<Object>> names = checkNames();
         if (names.size() == 0){
             return;
@@ -271,7 +272,22 @@ public class TournamentManager {
         }
         range = "Tournament structure!a1:a";
         write(range + (2 * names.size()), values);
-        write("Tournament structure!E1:F1", Arrays.asList(Arrays.asList("type action to execute", "execution parameter")));
+        write("Tournament structure!E1:F1", Arrays.asList(Arrays.asList(
+                "type action to execute", "execution parameter")));
+
+        List<Request> requests = new ArrayList<>();
+        Border border = new Border().setWidth(1).setStyle("SOLID");
+        for (int i = 0; i < 2 * names.size(); i+=2) {
+            GridRange gridRange = new GridRange().setStartColumnIndex(0).setStartRowIndex(i)
+                    .setEndColumnIndex(1).setEndRowIndex(i + 1).setSheetId(1); // should be 1
+            UpdateBordersRequest updateBordersRequest = new UpdateBordersRequest().setRange(gridRange)
+                    .setBottom(border).setLeft(border).setRight(border).setTop(border);
+            Request request = new Request().setUpdateBorders(updateBordersRequest);
+            requests.add(request);
+        }
+        BatchUpdateSpreadsheetRequest requestBody = new BatchUpdateSpreadsheetRequest();
+        requestBody.setRequests(requests);
+        sheetsService.spreadsheets().batchUpdate(SHEET_ID, requestBody).execute();
     }
 
     private static void updateStructure() throws IOException, GeneralSecurityException {
@@ -290,7 +306,6 @@ public class TournamentManager {
             }
         }
         System.out.println(step);
-
         // name_positions = pow(2, step - 1) - 1 + pow(2, step) * n
         int pos = (int) Math.pow(2, step - 1) - 1;
         boolean have_pair = false;
@@ -356,7 +371,6 @@ public class TournamentManager {
         if (names.size() == 0){
             return;
         }
-
         List<List<Object>> struct = read("Robin structure!A1:K11");
         Pattern fPattern = Pattern.compile(".*,");
         Pattern sPattern = Pattern.compile(",.*");
@@ -415,7 +429,7 @@ public class TournamentManager {
                 System.out.println("LAYOUT LOADED");
                 break;
             case "make str":
-                addTab("Tournament structure");
+                addTab("Tournament structure", 1);
                 initStructure();
                 System.out.println("STRUCTURE MADE");
                 break;
@@ -429,7 +443,7 @@ public class TournamentManager {
                 System.out.println("STR UPDATED");
                 break;
             case "make robin":
-                addTab("Robin structure");
+                addTab("Robin structure", 2);
                 initRobin();
                 System.out.println("ROBIN MADE");
                 break;
@@ -438,12 +452,12 @@ public class TournamentManager {
                 System.out.println("ROBIN UPDATED");
                 break;
             case "stats":
-                addTab("Stats");
+                addTab("Stats", 3);
                 currentStats();
                 System.out.println("STATS MADE");
                 break;
             case "total stats":
-                addTab("Total stats");
+                addTab("Total stats", 4);
                 totalStats();
                 System.out.println("TOTAL STATS MADE");
                 break;
