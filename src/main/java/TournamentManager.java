@@ -64,7 +64,6 @@ public class TournamentManager {
             throw new IllegalArgumentException("sheet not specified");
         }
         range = range.toUpperCase();
-        sheetsService = getSheetsService();
         ValueRange response = sheetsService.spreadsheets().values().get(SHEET_ID, range).execute();
         List<List<Object>> values = response.getValues();
         if (values == null || values.isEmpty()){
@@ -79,7 +78,6 @@ public class TournamentManager {
             throw new IllegalArgumentException("sheet not specified");
         }
         range = range.toUpperCase();
-        sheetsService = getSheetsService();
         ValueRange body = new ValueRange().setValues(values);
         sheetsService.spreadsheets().values().update(SHEET_ID, range, body).setValueInputOption("RAW").execute();
     }
@@ -95,46 +93,33 @@ public class TournamentManager {
 
     private static Pair<String, String> waitExecute()
             throws InterruptedException, IOException, GeneralSecurityException {
-        sheetsService = getSheetsService();
-        String main_sheet = "Main!", str_sheet = "Tournament Structure!";
-        List<List<Object>> values_main = read(main_sheet + "e1");
-        List<List<Object>> values_str = read(str_sheet + "e1");
-        String action, param;
-        while (values_main.get(0).get(0).equals("type action to execute") &&
-                values_str.get(0).get(0).equals("type action to execute")) {
-            Thread.sleep(1000);
-            sheetsService = getSheetsService();
+        List<List<Object>> values = new ArrayList<>();
+        boolean flag = false;
+        String[] sheets = {"Main!", "Tournament Structure!", "Total stats!", "Stats!"};
+        String action, param, exe_sheet = "";
+
+        while (!flag) {
             try {
-                values_main = read(main_sheet + "e1:f1");
-                values_str = read(str_sheet + "e1:f1");
+                for (String sheet : sheets) {
+                    values = read(sheet + "e1");
+                    if (!values.get(0).get(0).equals("type action to execute")){
+                        flag = true;
+                        exe_sheet = sheet;
+                        break;
+                    }
+                }
             }catch (java.net.SocketTimeoutException e){
                 System.err.println("Caught TimeoutException");
             }
+            Thread.sleep(1000);
         }
-        if (!values_main.get(0).get(0).equals("type action to execute")) {
-            write(main_sheet + "e1:f1", Arrays.asList(Arrays.asList("type action to execute", "execution parameter")));
-            action = (String) values_main.get(0).get(0);
-            param = main_sheet + values_main.get(0).get(1);
-        }
-        else{
-            write(str_sheet + "e1:f1", Arrays.asList(Arrays.asList("type action to execute", "execution parameter")));
-            action = (String) values_str.get(0).get(0);
-            param = str_sheet + values_str.get(0).get(1);
-        }
+        action = (String) values.get(0).get(0);
+        param = exe_sheet + values.get(0).get(1);
+        write(exe_sheet + "e1:f1", Arrays.asList(Arrays.asList("type action to execute", "execution parameter")));
         return new Pair<>(action, param);
     }
 
-    private static void initLayout() throws IOException, GeneralSecurityException {
-        sheetsService = getSheetsService();
-        write("Main!A1:F1", Arrays.asList(
-                Arrays.asList("input names below, number here", "sport", "input 1 where applies",
-                        "", "type action to execute", "execution parameter")));
-        write("Main!B2:B4", Arrays.asList(Arrays.asList("chess"),
-                Arrays.asList("table tennis"), Arrays.asList("football")));
-    }
-
     private static void getNames() throws IOException, GeneralSecurityException {
-        sheetsService = getSheetsService();
         List<List<Object>> range = read("Main!a1");
         int numRange;
         try {
@@ -151,7 +136,6 @@ public class TournamentManager {
 
     private static void addTab(String title, int id) throws IOException, GeneralSecurityException {
         boolean flag = false;
-        sheetsService = getSheetsService();
         Spreadsheet ssheet = sheetsService.spreadsheets().get(SHEET_ID).execute();
         for (Sheet sheet : ssheet.getSheets()) {
             if (sheet.getProperties().getTitle().equals(title)){
@@ -172,7 +156,6 @@ public class TournamentManager {
     }
 
     private static void renameTab() throws IOException, GeneralSecurityException {
-        sheetsService = getSheetsService();
         // create a SheetProperty object and put there all your parameters (title, sheet id, something else)
         SheetProperties title = new SheetProperties().setSheetId(0).setTitle("Main");
         // make a request with this properties
@@ -209,8 +192,36 @@ public class TournamentManager {
         return values;
     }
 
+    private static void borderExecution(Integer sheetId) throws IOException, GeneralSecurityException {
+        List<Request> requests = new ArrayList<>();
+        Border border2 = new Border().setWidth(2).setStyle("SOLID");
+        GridRange gridRange = new GridRange().setStartColumnIndex(4).setStartRowIndex(0)
+                .setEndColumnIndex(5).setEndRowIndex(1).setSheetId(sheetId);
+        UpdateBordersRequest updateBordersRequest = new UpdateBordersRequest().setRange(gridRange)
+                .setBottom(border2).setLeft(border2).setRight(border2).setTop(border2);
+        Request request = new Request().setUpdateBorders(updateBordersRequest);
+        requests.add(request);
+        GridRange gridRange2 = new GridRange().setStartColumnIndex(5).setStartRowIndex(0)
+                .setEndColumnIndex(6).setEndRowIndex(1).setSheetId(sheetId);
+        UpdateBordersRequest updateBordersRequest2 = new UpdateBordersRequest().setRange(gridRange2)
+                .setBottom(border2).setLeft(border2).setRight(border2).setTop(border2);
+        Request request2 = new Request().setUpdateBorders(updateBordersRequest2);
+        requests.add(request2);
+        BatchUpdateSpreadsheetRequest requestBody = new BatchUpdateSpreadsheetRequest();
+        requestBody.setRequests(requests);
+        sheetsService.spreadsheets().batchUpdate(SHEET_ID, requestBody).execute();
+    }
+
+    private static void initLayout() throws IOException, GeneralSecurityException {
+        write("Main!A1:F1", Arrays.asList(
+                Arrays.asList("input names below, number here", "sport", "input 1 where applies",
+                        "", "type action to execute", "execution parameter")));
+        write("Main!B2:B4", Arrays.asList(Arrays.asList("chess"),
+                Arrays.asList("table tennis"), Arrays.asList("football")));
+        borderExecution(0);
+    }
+
     private static void currentStats() throws IOException, GeneralSecurityException {
-        sheetsService = getSheetsService();
         List<List<Object>> values = new ArrayList<>();
         values.add(Arrays.asList("Name", "Wins", "Score"));
         values.addAll(contestantsToList(contestants));
@@ -218,7 +229,6 @@ public class TournamentManager {
     }
 
     private static void totalStats() throws IOException, GeneralSecurityException {
-        sheetsService = getSheetsService();
         Map<String, Contestant> allContestants = new HashMap<>();
         List<List<Object>> values, total, result = new ArrayList<>();
         values = read("Stats!A1:C" + MAX_CONTESTANTS);
@@ -242,10 +252,12 @@ public class TournamentManager {
         result.add(Arrays.asList("Name", "Wins", "Score"));
         result.addAll(contestantsToList(allContestants));
         write("Total stats!A1:C" + (allContestants.size() + 1), result);
+        write("Total stats!E1:F1", Arrays.asList(Arrays.asList(
+                "type action to execute", "execution parameter")));
+        borderExecution(4);
     }
 
     private static void resetTotalStats() throws IOException, GeneralSecurityException {
-        sheetsService = getSheetsService();
         List<List<Object>> empty = new ArrayList<>();
         for (int i = 0; i < MAX_CONTESTANTS - 1; i++){
             empty.add(Arrays.asList("", "", ""));
@@ -254,7 +266,6 @@ public class TournamentManager {
     }
 
     private static void initStructure() throws IOException, GeneralSecurityException {
-        sheetsService = getSheetsService();
         String range;
         List<List<Object>> names = checkNames();
         if (names.size() == 0){
@@ -285,13 +296,13 @@ public class TournamentManager {
             Request request = new Request().setUpdateBorders(updateBordersRequest);
             requests.add(request);
         }
+        borderExecution(1);
         BatchUpdateSpreadsheetRequest requestBody = new BatchUpdateSpreadsheetRequest();
         requestBody.setRequests(requests);
         sheetsService.spreadsheets().batchUpdate(SHEET_ID, requestBody).execute();
     }
 
     private static void updateStructure() throws IOException, GeneralSecurityException {
-        sheetsService = getSheetsService();
         List<List<Object>> struct = read("tournament structure!A1:E15");
         int step = 0;
         System.out.println(struct);
@@ -343,7 +354,6 @@ public class TournamentManager {
     }
 
     private static void initRobin() throws IOException, GeneralSecurityException {
-        sheetsService = getSheetsService();
         List<List<Object>> names = checkNames();
         if (names.size() == 0){
             return;
@@ -366,7 +376,6 @@ public class TournamentManager {
     }
 
     private static void updateRobin() throws IOException, GeneralSecurityException {
-        sheetsService = getSheetsService();
         List<List<Object>> names = checkNames();
         if (names.size() == 0){
             return;
@@ -477,6 +486,7 @@ public class TournamentManager {
         String action, range="", strValues="";
         List<List<Object>> receivedValues;
         Pair<String, String> exeParams;
+        sheetsService = getSheetsService();
         while (true) {
             System.out.println("enter your action, range and values if any:");
             action = scanner.nextLine();
