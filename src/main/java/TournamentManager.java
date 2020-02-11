@@ -58,7 +58,7 @@ public class TournamentManager {
                 .build();
     }
 
-    private static List<List<Object>> read(String range) throws IOException, GeneralSecurityException {
+    private static List<List<Object>> read(String range) throws IOException {
         if (!range.contains("!")){
             System.out.println(range);
             throw new IllegalArgumentException("sheet not specified");
@@ -72,7 +72,7 @@ public class TournamentManager {
         return values;
     }
 
-    private static void write(String range, List<List<Object>> values) throws IOException, GeneralSecurityException {
+    private static void write(String range, List<List<Object>> values) throws IOException {
         if (!range.contains("!")){
             System.out.println(range);
             throw new IllegalArgumentException("sheet not specified");
@@ -92,7 +92,7 @@ public class TournamentManager {
     }
 
     private static Pair<String, String> waitExecute()
-            throws InterruptedException, IOException, GeneralSecurityException {
+            throws InterruptedException, IOException {
         List<List<Object>> values = new ArrayList<>();
         boolean flag = false;
         String[] sheets = {"Main!", "Tournament Structure!", "Total stats!", "Stats!"};
@@ -119,7 +119,7 @@ public class TournamentManager {
         return new Pair<>(action, param);
     }
 
-    private static void getNames() throws IOException, GeneralSecurityException {
+    private static void getNames() throws IOException {
         List<List<Object>> range = read("Main!a1");
         int numRange;
         try {
@@ -134,7 +134,7 @@ public class TournamentManager {
         }
     }
 
-    private static void addTab(String title, int id) throws IOException, GeneralSecurityException {
+    private static void addTab(String title, int id) throws IOException {
         boolean flag = false;
         Spreadsheet ssheet = sheetsService.spreadsheets().get(SHEET_ID).execute();
         for (Sheet sheet : ssheet.getSheets()) {
@@ -156,6 +156,7 @@ public class TournamentManager {
     }
 
     private static void renameTab() throws IOException, GeneralSecurityException {
+        sheetsService = getSheetsService();
         // create a SheetProperty object and put there all your parameters (title, sheet id, something else)
         SheetProperties title = new SheetProperties().setSheetId(0).setTitle("Main");
         // make a request with this properties
@@ -192,7 +193,26 @@ public class TournamentManager {
         return values;
     }
 
-    private static void borderExecution(Integer sheetId) throws IOException, GeneralSecurityException {
+    private static void makeBold(String range, int sheetId) throws IOException {
+        List<Request> requests = new ArrayList<>();
+        TextFormat format = new TextFormat().setBold(true);
+        CellFormat cellFormat = new CellFormat().setTextFormat(format);
+        int startColumn = range.charAt(0)-65;
+        int startRow = Integer.parseInt(String.valueOf(range.charAt(1))) - 1;
+        int endColumn = range.charAt(3) - 65 + 1;
+        int endRow = Integer.parseInt(String.valueOf(range.charAt(4)));
+        GridRange gridRange = new GridRange().setStartColumnIndex(startColumn).setStartRowIndex(startRow)
+                .setEndColumnIndex(endColumn).setEndRowIndex(endRow).setSheetId(sheetId);
+        CellData cellData = new CellData().setUserEnteredFormat(cellFormat);
+        RepeatCellRequest repeatCellRequest = new RepeatCellRequest().setCell(cellData).setRange(gridRange)
+                .setFields("userEnteredFormat.textFormat.bold");
+        Request request = new Request().setRepeatCell(repeatCellRequest);
+        requests.add(request);
+        BatchUpdateSpreadsheetRequest requestBody = new BatchUpdateSpreadsheetRequest();
+        requestBody.setRequests(requests);
+        sheetsService.spreadsheets().batchUpdate(SHEET_ID, requestBody).execute();
+    }
+    private static void borderExecution(Integer sheetId) throws IOException {
         List<Request> requests = new ArrayList<>();
         Border border2 = new Border().setWidth(2).setStyle("SOLID");
         GridRange gridRange = new GridRange().setStartColumnIndex(4).setStartRowIndex(0)
@@ -218,6 +238,18 @@ public class TournamentManager {
                         "", "type action to execute", "execution parameter")));
         write("Main!B2:B4", Arrays.asList(Arrays.asList("chess"),
                 Arrays.asList("table tennis"), Arrays.asList("football")));
+        write("Main!E2:F10", Arrays.asList(
+                Arrays.asList("Actions", "Description"),
+                Arrays.asList("init", "Fills in initial layout of the program (this one)"),
+                Arrays.asList("make str", "Creates initial Olympic tournament structure"),
+                Arrays.asList("update str", "Updates the Olympic tournament with given scores"),
+                Arrays.asList("make robin", "Creates tournament with Round Robin structure"),
+                Arrays.asList("update robin", "Updates the Round Robin tournament with given scores"),
+                Arrays.asList("stats", "Creates new tab with current stats"),
+                Arrays.asList("total stats", "Updates or creates a summary of stats tab"),
+                Arrays.asList("reset stats", "Resets total stats")));
+        makeBold("A1:D1", 0);
+        makeBold("E2:F2", 0);
         borderExecution(0);
     }
 
@@ -372,6 +404,8 @@ public class TournamentManager {
         List<List<Object>> horValues;
         horValues = Arrays.asList(horValuesTmp);
         write("Robin structure!b1:" + (char)(names.size() + 65 + 2) + "1", horValues);
+        makeBold("A1:K1", 2);
+        makeBold("A2:A9", 2);
         // write("Robin structure!E1:F1", Arrays.asList(Arrays.asList("type action to execute", "execution parameter")));
     }
 
@@ -486,20 +520,22 @@ public class TournamentManager {
         String action, range="", strValues="";
         List<List<Object>> receivedValues;
         Pair<String, String> exeParams;
-        sheetsService = getSheetsService();
+        if (SHEET_ID.equals("")){
+            SHEET_ID = scanner.nextLine();
+            sheetsService = getSheetsService();
+            System.out.println("authorization complete");
+            List<List<Object>> emptyList = null;
+            act("init", "", emptyList);
+
+        }else {
+            sheetsService = getSheetsService();
+        }
         while (true) {
             System.out.println("enter your action, range and values if any:");
             action = scanner.nextLine();
             if (action.equals("exit")){
                 break;
             }
-            if (action.equals("read") || action.equals("write")) {
-                range = scanner.nextLine().toUpperCase();
-            }
-            if (action.equals("write")) {
-                strValues = scanner.nextLine();
-            }
-
             System.out.println("processing");
             List<List<Object>> values = Arrays.asList(Arrays.asList(strValues));
             if (action.equals("wait")){
